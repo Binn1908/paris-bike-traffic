@@ -1,4 +1,4 @@
-# Traffic cycliste à Paris
+# Trafic cycliste à Paris
 
 La Ville de Paris met à disposition des données sur le trafic cycliste, collectées grâce à des compteurs répartis dans toute la ville.
 
