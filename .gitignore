@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Large / private files
+data/processed/df_processed.csv
+data/processed/df_random_forest_tuning.csv
+data/raw/comptage-velo-donnees-compteurs.csv
+reports/Description-colonnes.xlsx
+reports/Rapport final.ipynb
+reports/Rapport final.pdf
+Cycling traffic in Paris.docx
+.venv/
