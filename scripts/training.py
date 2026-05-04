@@ -1,9 +1,13 @@
-import sqlite3
+import os
 import joblib
 import pandas as pd
 from pathlib import Path
+from sqlalchemy import create_engine
+from dotenv import load_dotenv
 
 from lightgbm import LGBMRegressor
+
+load_dotenv()
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
@@ -12,7 +16,11 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from xgboost import XGBRegressor
 
-DB_PATH = Path("db/paris_bike_traffic.db")
+DATABASE_URL = (
+    f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}"
+    f"@{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DB')}"
+)
+
 MODELS_DIR = Path("models")
 
 FEATURE_COLS_NUM = [
@@ -69,10 +77,9 @@ MODELS = {
 
 
 def load_data():
-    """Charge les données d'entraînement depuis la base de données SQLite."""
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql("SELECT * FROM training_data", conn)
-    conn.close()
+    """Charge les données d'entraînement depuis la base de données MySQL."""
+    engine = create_engine(DATABASE_URL)
+    df = pd.read_sql("SELECT * FROM training_data", engine)
     return df
 
 
@@ -103,7 +110,7 @@ def preprocess_data(df):
 
 
 def build_pipeline(model_name, model):
-    """Construit un pipeline sklearn avec prétraitement pour un modèle donné. La régression linéaire utilise le StandardScaler, les autres modèles le passthrough."""
+    """Construit un pipeline sklearn avec prétraitement pour un modèle donné."""
     num_transformer = StandardScaler() if model_name == "lr" else "passthrough"
 
     preprocess = ColumnTransformer(
@@ -124,7 +131,7 @@ def train(model_name: str = "lgbm"):
             f"Modèle '{model_name}' inconnu. Valeurs acceptées : {list(MODELS.keys())}"
         )
 
-    print(f"Chargement des données d'entraînement depuis la base de données SQLite...")
+    print(f"Chargement des données d'entraînement depuis la base de données MySQL...")
     df = load_data()
     print(f"{len(df)} lignes chargées")
 
@@ -157,5 +164,4 @@ if __name__ == "__main__":
     import sys
 
     model_name = sys.argv[1] if len(sys.argv) > 1 else "lgbm"
-    # Si aucun modèle n'est fourni, on entraîne lgbm par défaut.
     train(model_name)
