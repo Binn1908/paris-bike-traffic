@@ -5,6 +5,9 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
+import mlflow
+import mlflow.sklearn
+
 from lightgbm import LGBMRegressor
 
 load_dotenv()
@@ -22,6 +25,7 @@ DATABASE_URL = (
 )
 
 MODELS_DIR = Path("models")
+MLFLOW_EXPERIMENT_NAME = "paris-bike-traffic"
 
 FEATURE_COLS_NUM = [
     "Année",
@@ -124,8 +128,25 @@ def build_pipeline(model_name, model):
     return Pipeline(steps=[("prep", preprocess), ("model", model)])
 
 
+def get_best_production_r2(model_name: str) -> float | None:
+    """Récupère le R² du meilleur modèle en production pour un modèle donné."""
+    client = (
+        mlflow.MlflowClient()
+    )  # objet qui permet d'interagir avec le Model Registry
+    registered_model_name = f"paris-bike-{model_name}"
+
+    try:
+        # Récupère toutes les versions du modèle avec l'alias 'production'
+        version = client.get_model_version_by_alias(registered_model_name, "production")
+        run = mlflow.get_run(version.run_id)
+        return run.data.metrics.get("r2")
+    except Exception:
+        # Aucun modèle en production trouvé
+        return None
+
+
 def train(model_name: str = "lgbm"):
-    """Entraîne un modèle et le sauvegarde sur disque. Retourne les métriques d'évaluation."""
+    """Entraîne un modèle, logge avec MLflow et promeut si meilleur. Retourne les métriques."""
     if model_name not in MODELS:
         raise ValueError(
             f"Modèle '{model_name}' inconnu. Valeurs acceptées : {list(MODELS.keys())}"
@@ -138,26 +159,79 @@ def train(model_name: str = "lgbm"):
     print("Preprocessing des données en cours...")
     X_train, X_test, y_train, y_test = preprocess_data(df)
 
-    print(f"Entraînement du modèle {model_name}...")
-    pipeline = build_pipeline(model_name, MODELS[model_name])
-    pipeline.fit(X_train, y_train)
+    # Configuration de l'expérience MLflow
+    mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
-    print("Evaluation...")
-    preds = pipeline.predict(X_test)
-    metrics = {
-        "model": model_name,
-        "mae": round(mean_absolute_error(y_test, preds), 4),
-        "rmse": round(root_mean_squared_error(y_test, preds), 4),
-        "r2": round(r2_score(y_test, preds), 4),
-    }
+    with mlflow.start_run(run_name=f"train_{model_name}"):
 
-    MODELS_DIR.mkdir(exist_ok=True)
-    model_path = MODELS_DIR / f"model_{model_name}.joblib"
-    joblib.dump(pipeline, model_path)
-    print(f"Modèle sauvegardé dans le chemin {model_path}")
-    print(f"Métriques : {metrics}")
+        # Logging des métadonnées des données
+        mlflow.log_param("model_name", model_name)
+        mlflow.log_param("train_size", len(X_train))
+        mlflow.log_param("test_size", len(X_test))
+        mlflow.log_param("n_features", len(FEATURE_COLS_NUM) + len(FEATURE_COLS_CAT))
+        mlflow.log_param("data_rows_total", len(df))
 
-    return metrics
+        # Logging des hyperparamètres du modèle
+        model = MODELS[model_name]
+        params = model.get_params() if hasattr(model, "get_params") else {}
+        mlflow.log_params(params)
+
+        print(f"Entraînement du modèle {model_name}...")
+        pipeline = build_pipeline(model_name, MODELS[model_name])
+        pipeline.fit(X_train, y_train)
+
+        print("Evaluation...")
+        preds = pipeline.predict(X_test)
+        mae = round(mean_absolute_error(y_test, preds), 4)
+        rmse = round(root_mean_squared_error(y_test, preds), 4)
+        r2 = round(r2_score(y_test, preds), 4)
+
+        metrics = {
+            "model": model_name,
+            "mae": mae,
+            "rmse": rmse,
+            "r2": r2,
+        }
+
+        print(f"Métriques : {metrics}")
+
+        # Logging des métriques
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("rmse", rmse)
+        mlflow.log_metric("r2", r2)
+
+        MODELS_DIR.mkdir(exist_ok=True)
+        model_path = MODELS_DIR / f"model_{model_name}.joblib"
+        joblib.dump(pipeline, model_path)
+        print(f"Modèle sauvegardé dans le chemin {model_path}")
+
+        # Enregistrement dans le MLflow Model Registry
+        registered_model_name = f"paris-bike-{model_name}"
+        model_info = mlflow.sklearn.log_model(
+            sk_model=pipeline,
+            name=registered_model_name,
+            registered_model_name=registered_model_name,
+        )
+        print(f"Modèle enregistré dans le MLflow Registry : {registered_model_name}")
+
+        # Comparaison avec le modèle en production et promotion si meilleur
+        client = mlflow.MlflowClient()
+        new_version = model_info.registered_model_version
+
+        best_r2 = get_best_production_r2(model_name)
+
+        if best_r2 is None or r2 > best_r2:
+            # Aucun modèle en production ou nouveau modèle meilleur → promotion
+            client.set_registered_model_alias(
+                name=registered_model_name,
+                alias="production",
+                version=new_version,
+            )
+            print(f"Nouveau modèle promu en production (R²: {r2} > {best_r2})")
+        else:
+            print(f"Modèle actuel conservé en production (R²: {best_r2} >= {r2})")
+
+        return metrics
 
 
 if __name__ == "__main__":
