@@ -1,23 +1,23 @@
 import os
-import joblib
-import pandas as pd
+import sys
 from pathlib import Path
-from sqlalchemy import create_engine
-from dotenv import load_dotenv
 
+import joblib
 import mlflow
 import mlflow.sklearn
-
+import pandas as pd
+from dotenv import load_dotenv
 from lightgbm import LGBMRegressor
-
-load_dotenv()
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, r2_score, root_mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sqlalchemy import create_engine
 from xgboost import XGBRegressor
+
+load_dotenv()
 
 DATABASE_URL = (
     f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}"
@@ -109,8 +109,15 @@ def preprocess_data(df):
     y_train = train[TARGET_COL]
     X_test = test[FEATURE_COLS_NUM + FEATURE_COLS_CAT]
     y_test = test[TARGET_COL]
+    
+    date_ranges = {
+        "train_start_date": str(train["Date et heure de comptage"].min()),
+        "train_end_date": str(train["Date et heure de comptage"].max()),
+        "test_start_date": str(test["Date et heure de comptage"].min()),
+        "test_end_date": str(test["Date et heure de comptage"].max()),
+    }
 
-    return X_train, X_test, y_train, y_test
+    return X_train, X_test, y_train, y_test, date_ranges
 
 
 def build_pipeline(model_name, model):
@@ -157,7 +164,7 @@ def train(model_name: str = "lgbm"):
     print(f"{len(df)} lignes chargées")
 
     print("Preprocessing des données en cours...")
-    X_train, X_test, y_train, y_test = preprocess_data(df)
+    X_train, X_test, y_train, y_test, date_ranges = preprocess_data(df)
 
     # Configuration de l'expérience MLflow
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
@@ -170,6 +177,7 @@ def train(model_name: str = "lgbm"):
         mlflow.log_param("test_size", len(X_test))
         mlflow.log_param("n_features", len(FEATURE_COLS_NUM) + len(FEATURE_COLS_CAT))
         mlflow.log_param("data_rows_total", len(df))
+        mlflow.log_params(date_ranges)
 
         # Logging des hyperparamètres du modèle
         model = MODELS[model_name]
@@ -235,7 +243,5 @@ def train(model_name: str = "lgbm"):
 
 
 if __name__ == "__main__":
-    import sys
-
     model_name = sys.argv[1] if len(sys.argv) > 1 else "lgbm"
     train(model_name)
