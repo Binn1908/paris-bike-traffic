@@ -1,0 +1,71 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DB}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  init-db:
+    build: .
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./data/processed:/app/data/processed
+    command: ["python", "db/init_db.py"]
+    profiles: ["tools"]
+
+  mlflow:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "5001:5000"
+    volumes:
+      - mlflow_data:/mlflow-data
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow-data/mlflow.db
+      --default-artifact-root /mlflow-data/artifacts
+      --allowed-hosts "*"
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    volumes:
+      - ./models:/app/models
+
+volumes:
+  mysql_data:
+  mlflow_data:
