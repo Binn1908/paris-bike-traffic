@@ -24,31 +24,10 @@ DATABASE_URL = (
     f"@{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DB')}"
 )
 
-MODELS_DIR = Path("models")
-MLFLOW_EXPERIMENT_NAME = "paris-bike-traffic"
-
-FEATURE_COLS_NUM = [
-    "Année",
-    "Mois",
-    "Jour du mois",
-    "Heure",
-    "Jour de la semaine",
-    "Week-end",
-    "Vacances",
-    "lag_1h",
-    "lag_24h",
-    "lag_168h",
-    "roll_mean_3h",
-    "Température (°C)",
-    "Précipitations (mm)",
-]
-FEATURE_COLS_CAT = ["Nom du compteur", "Direction"]
-TARGET_COL = "Comptage horaire"
-
 MODELS = {
     "lr": LinearRegression(),
     "rf": RandomForestRegressor(
-        n_jobs=2,
+        n_jobs=2,  # Modification de -1 pour alléger l'entraînement
         random_state=42,
         max_depth=30,
         min_samples_leaf=5,
@@ -79,28 +58,57 @@ MODELS = {
     ),
 }
 
+FEATURE_COLS_NUM = [
+    "Année",
+    "Mois",
+    "Jour du mois",
+    "Heure",
+    "Jour de la semaine",
+    "Week-end",
+    "Vacances",
+    "lag_1h",
+    "lag_24h",
+    "lag_168h",
+    "roll_mean_3h",
+    "Température (°C)",
+    "Précipitations (mm)",
+]
+FEATURE_COLS_CAT = ["Nom du compteur", "Direction"]
+TARGET_COL = "Comptage horaire"
+
+MLFLOW_EXPERIMENT_NAME = "paris-bike-traffic"
+
+MODELS_DIR = Path("models")
+
 
 def load_data():
-    """Charge les données d'entraînement depuis la base de données MySQL."""
+    """
+    Charge la table training_data depuis MySQL
+    avec seulement les colonnes utilisées dans l'entraînement des modèles
+    + la colonne 'Date et heure de comptage'.
+    """
     engine = create_engine(DATABASE_URL)
     cols = FEATURE_COLS_NUM + FEATURE_COLS_CAT + [TARGET_COL, "Date et heure de comptage"]
-    cols_sql = ", ".join(f"`{col}`" for col in cols)
+    cols_sql = ", ".join(f"`{col}`" for col in cols)  # Les backticks `` protègent le nom des colonnes
     df = pd.read_sql(f"SELECT {cols_sql} FROM training_data", engine)
     return df
 
 
-def preprocess_data(df):
-    """Nettoie et divise les données en ensembles d'entraînement et de test."""
+def prep_data(df):
+    """
+    Nettoie et divise les données en ensembles d'entraînement et de test.
+    """
     for col in FEATURE_COLS_NUM:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df_clean = df.dropna(
-        subset=FEATURE_COLS_NUM + FEATURE_COLS_CAT + [TARGET_COL]
-    ).copy()
-
-    df_clean["Date et heure de comptage"] = pd.to_datetime(
-        df_clean["Date et heure de comptage"], errors="coerce"
+    df["Date et heure de comptage"] = pd.to_datetime(
+        df["Date et heure de comptage"], errors="coerce"
     )
+
+    df_clean = df.dropna(
+        subset=FEATURE_COLS_NUM + FEATURE_COLS_CAT + [TARGET_COL, "Date et heure de comptage"]
+    ).copy()
+    
     df_clean = df_clean.sort_values("Date et heure de comptage")
 
     split = int(len(df_clean) * 0.8)
@@ -119,11 +127,13 @@ def preprocess_data(df):
         "test_end_date": str(test["Date et heure de comptage"].max()),
     }
 
-    return X_train, X_test, y_train, y_test, date_ranges
+    return X_train, y_train, X_test, y_test, date_ranges
 
 
 def build_pipeline(model_name, model):
-    """Construit un pipeline sklearn avec prétraitement pour un modèle donné."""
+    """
+    Construit un pipeline sklearn avec prétraitement pour un modèle donné.
+    """
     num_transformer = StandardScaler() if model_name == "lr" else "passthrough"
 
     preprocess = ColumnTransformer(
@@ -138,11 +148,13 @@ def build_pipeline(model_name, model):
 
 
 def get_best_production_r2(model_name: str) -> float | None:
-    """Récupère le R² du meilleur modèle en production pour un modèle donné."""
+    """
+    Récupère le R² du meilleur modèle en production pour un modèle donné.
+    """
     client = (
         mlflow.MlflowClient()
-    )  # objet qui permet d'interagir avec le Model Registry
-    registered_model_name = f"paris-bike-{model_name}"
+    )  # Objet qui permet d'interagir avec le MLflow Model Registry
+    registered_model_name = f"paris-bike-traffic-{model_name}"
 
     try:
         # Récupère toutes les versions du modèle avec l'alias 'production'
@@ -155,7 +167,10 @@ def get_best_production_r2(model_name: str) -> float | None:
 
 
 def train(model_name: str = "lgbm"):
-    """Entraîne un modèle, logge avec MLflow et promeut si meilleur. Retourne les métriques."""
+    """
+    Entraîne un modèle, logge avec MLflow et promeut si meilleur.
+    Retourne les métriques.
+    """
     if model_name not in MODELS:
         raise ValueError(
             f"Modèle '{model_name}' inconnu. Valeurs acceptées : {list(MODELS.keys())}"
@@ -163,25 +178,25 @@ def train(model_name: str = "lgbm"):
 
     print(f"Chargement des données d'entraînement depuis la base de données MySQL...")
     df = load_data()
-    print(f"{len(df)} lignes chargées")
+    print(f"{len(df)} lignes chargées.")
 
     print("Preprocessing des données en cours...")
-    X_train, X_test, y_train, y_test, date_ranges = preprocess_data(df)
+    X_train, y_train, X_test, y_test, date_ranges = prep_data(df)
 
-    # Configuration de l'expérience MLflow
+    # Création de l'expérience MLflow
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
     with mlflow.start_run(run_name=f"train_{model_name}"):
-
-        # Logging des métadonnées des données
+        
+        print("Logging des métadonnées des données...")
         mlflow.log_param("model_name", model_name)
         mlflow.log_param("train_size", len(X_train))
         mlflow.log_param("test_size", len(X_test))
-        mlflow.log_param("n_features", len(FEATURE_COLS_NUM) + len(FEATURE_COLS_CAT))
         mlflow.log_param("data_rows_total", len(df))
         mlflow.log_params(date_ranges)
-
-        # Logging des hyperparamètres du modèle
+        mlflow.log_param("n_features", len(FEATURE_COLS_NUM) + len(FEATURE_COLS_CAT))
+        
+        print("Logging des hyperparamètres du modèle...")
         model = MODELS[model_name]
         params = model.get_params() if hasattr(model, "get_params") else {}
         mlflow.log_params(params)
@@ -203,20 +218,12 @@ def train(model_name: str = "lgbm"):
             "r2": r2,
         }
 
-        print(f"Métriques : {metrics}")
-
-        # Logging des métriques
+        print(f"Logging des métriques : {metrics}")
         mlflow.log_metric("mae", mae)
         mlflow.log_metric("rmse", rmse)
         mlflow.log_metric("r2", r2)
 
-        MODELS_DIR.mkdir(exist_ok=True)
-        model_path = MODELS_DIR / f"model_{model_name}.joblib"
-        joblib.dump(pipeline, model_path)
-        print(f"Modèle sauvegardé dans le chemin {model_path}")
-
-        # Enregistrement dans le MLflow Model Registry
-        registered_model_name = f"paris-bike-{model_name}"
+        registered_model_name = f"paris-bike-traffic-{model_name}"
         model_info = mlflow.sklearn.log_model(
             sk_model=pipeline,
             name=registered_model_name,
@@ -231,15 +238,19 @@ def train(model_name: str = "lgbm"):
         best_r2 = get_best_production_r2(model_name)
 
         if best_r2 is None or r2 > best_r2:
-            # Aucun modèle en production ou nouveau modèle meilleur → promotion
             client.set_registered_model_alias(
                 name=registered_model_name,
                 alias="production",
-                version=new_version,
+                version=new_version
             )
             print(f"Nouveau modèle promu en production (R²: {r2} > {best_r2})")
         else:
             print(f"Modèle actuel conservé en production (R²: {best_r2} >= {r2})")
+            
+        MODELS_DIR.mkdir(exist_ok=True)
+        model_path = MODELS_DIR / f"model_{model_name}.joblib"
+        joblib.dump(pipeline, model_path)
+        print(f"Modèle sauvegardé dans le chemin : {model_path}")
 
         return metrics
 

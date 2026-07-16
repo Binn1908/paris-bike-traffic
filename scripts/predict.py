@@ -1,18 +1,21 @@
-import joblib
-import pandas as pd
 from pathlib import Path
 
-MODELS_DIR = Path("models")
+import joblib
+import pandas as pd
 
 AVAILABLE_MODELS = ["lr", "rf", "lgbm", "xgb"]
 DEFAULT_MODEL = "lgbm"
 
+MODELS_DIR = Path("models")
+
 
 def load_model(model_name: str = DEFAULT_MODEL):
-    """Charger un modèle entraîné depuis le disque."""
+    """
+    Charge un modèle/pipeline entraîné depuis le disque.
+    """
     if model_name not in AVAILABLE_MODELS:
         raise ValueError(
-            f"Modèle '{model_name}' inconnu. Choisir parmi : {AVAILABLE_MODELS}"
+            f"Modèle '{model_name}' inconnu. Valeurs acceptées : {AVAILABLE_MODELS}"
         )
 
     model_path = MODELS_DIR / f"model_{model_name}.joblib"
@@ -25,7 +28,7 @@ def load_model(model_name: str = DEFAULT_MODEL):
 
 def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
     """
-    Effectuer une prédiction pour une seule entrée.
+    Effectue une prédiction.
 
     Args :
         input_data : dict avec les clés suivantes :
@@ -49,15 +52,18 @@ def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
     Output :
         Nombre de vélos prédit par heure (float)
     """
-    model = load_model(model_name)
+    model = load_model(model_name)  # Techniquement, c'est un pipeline :)
     df = pd.DataFrame([input_data])
     prediction = model.predict(df)[0]
-    return max(0.0, round(float(prediction), 2))
-    # La prédiction ne peut être < 0.
+    prediction = max(0.0, round(float(prediction), 2))
+    # La prédiction ne peut être < 0
+    print(f"Nombre de vélos prédit par heure : {prediction}")
+    
+    return prediction
 
 
 if __name__ == "__main__":
-    # Exemple de prédiction pour les tests
+    # Exemple de prédiction pour tester
     sample_input = {
         "Nom du compteur": "10 avenue de la Grande Armée 10 avenue de la Grande Armée [Bike IN]",
         "Direction": "Bike IN",
@@ -77,4 +83,3 @@ if __name__ == "__main__":
     }
 
     result = predict(sample_input, model_name="lgbm")
-    print(f"Nombre de vélos prédit par heure : {result}")
