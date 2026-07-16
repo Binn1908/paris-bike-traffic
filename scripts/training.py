@@ -48,7 +48,7 @@ TARGET_COL = "Comptage horaire"
 MODELS = {
     "lr": LinearRegression(),
     "rf": RandomForestRegressor(
-        n_jobs=-1,
+        n_jobs=2,
         random_state=42,
         max_depth=30,
         min_samples_leaf=5,
@@ -83,7 +83,9 @@ MODELS = {
 def load_data():
     """Charge les données d'entraînement depuis la base de données MySQL."""
     engine = create_engine(DATABASE_URL)
-    df = pd.read_sql("SELECT * FROM training_data", engine)
+    cols = FEATURE_COLS_NUM + FEATURE_COLS_CAT + [TARGET_COL, "Date et heure de comptage"]
+    cols_sql = ", ".join(f"`{col}`" for col in cols)
+    df = pd.read_sql(f"SELECT {cols_sql} FROM training_data", engine)
     return df
 
 
