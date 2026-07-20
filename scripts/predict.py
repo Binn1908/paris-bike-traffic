@@ -1,29 +1,27 @@
-from pathlib import Path
-
-import joblib
+import mlflow
 import pandas as pd
 
 AVAILABLE_MODELS = ["lr", "rf", "lgbm", "xgb"]
 DEFAULT_MODEL = "lgbm"
 
-MODELS_DIR = Path("models")
-
 
 def load_model(model_name: str = DEFAULT_MODEL):
     """
-    Charge un modèle/pipeline entraîné depuis le disque.
+    Charge la version en production du modèle depuis le MLflow Model Registry.
     """
     if model_name not in AVAILABLE_MODELS:
         raise ValueError(
             f"Modèle '{model_name}' inconnu. Valeurs acceptées : {AVAILABLE_MODELS}"
         )
 
-    model_path = MODELS_DIR / f"model_{model_name}.joblib"
+    model_uri = f"models:/paris-bike-traffic-{model_name}@production"
 
-    if not model_path.exists():
-        raise FileNotFoundError(f"Fichier modèle introuvable : {model_path}")
-
-    return joblib.load(model_path)
+    try:
+        return mlflow.sklearn.load_model(model_uri)
+    except mlflow.exceptions.MlflowException as e:
+        raise FileNotFoundError(
+            f"Aucun modèle '{model_name}' en production dans le MLflow Registry : {e}"
+        )
 
 
 def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
@@ -52,7 +50,7 @@ def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
     Output :
         Nombre de vélos prédit par heure (float)
     """
-    model = load_model(model_name)  # Techniquement, c'est un pipeline :)
+    model = load_model(model_name)  # Techniquement, c'est toujours un pipeline :)
     df = pd.DataFrame([input_data])
     prediction = model.predict(df)[0]
     prediction = max(0.0, round(float(prediction), 2))

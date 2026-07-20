@@ -1,12 +1,14 @@
 services:
+  # container 1
   mysql:
     image: mysql:8.0
     restart: unless-stopped
     environment:
+      # MYSQL_USER (root) est créé automatiquement au lancement de ce service
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DB}
     ports:
-      - "3307:3306"
+      - "3307:3306"  # Host port : 3307 (3306 étant pris par MySQL en local)
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -15,8 +17,9 @@ services:
       timeout: 5s
       retries: 10
 
+  # container 2
   init-db:
-    build: .
+    build: .  # Reprend l'image définie dans Dockerfile
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
@@ -27,10 +30,11 @@ services:
       mysql:
         condition: service_healthy
     volumes:
-      - ./data/processed:/app/data/processed
-    command: ["python", "db/init_db.py"]
-    profiles: ["tools"]
+      - ./data/processed:/app/data/processed  # <-- bind mount
+    command: ["python", "db/init_db.py"]  # Remplace la ligne CMD dans le Dockerfile afin de lancer init_db.py
+    profiles: ["tools"]  # init-db ne sera pas lancé avec docker compose up, mais reste exécutable via docker compose run init-db
 
+  # container 3
   mlflow:
     build: .
     restart: unless-stopped
@@ -38,14 +42,20 @@ services:
       - "5001:5000"
     volumes:
       - mlflow_data:/mlflow-data
-    command: >
+    command: >  # Démarre le serveur MLflow
       mlflow server
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:////mlflow-data/mlflow.db
       --default-artifact-root /mlflow-data/artifacts
       --allowed-hosts "*"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
+  # container 4
   api:
     build: .
     restart: unless-stopped
@@ -55,17 +65,21 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DB: ${MYSQL_DB}
-      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_TRACKING_URI: http://mlflow:5000  # requis pour /training et /predict (modèles chargés depuis MLflow)
     ports:
       - "8000:8000"
     depends_on:
       mysql:
         condition: service_healthy
       mlflow:
-        condition: service_started
-    volumes:
-      - ./models:/app/models
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
+  # container 5
   airflow-db:
     image: postgres:16
     restart: unless-stopped
@@ -81,6 +95,7 @@ services:
       timeout: 5s
       retries: 10
 
+  # container 6
   airflow:
     image: apache/airflow:2.10.4
     restart: unless-stopped
@@ -98,9 +113,12 @@ services:
       airflow-db:
         condition: service_healthy
       api:
-        condition: service_started
+        condition: service_healthy
     command: standalone
+    # Mode "tout-en-un" (webserver + scheduler + triggerer) — pratique pour un seul conteneur,
+    # mais non recommandé pour un déploiement de production à grande échelle
 
+# Les volumes déclarés sont indépendants des containers ci-dessus
 volumes:
   mysql_data:
   mlflow_data:

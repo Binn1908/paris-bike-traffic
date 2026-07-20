@@ -1,8 +1,6 @@
 import os
 import sys
-from pathlib import Path
 
-import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
@@ -77,8 +75,6 @@ FEATURE_COLS_CAT = ["Nom du compteur", "Direction"]
 TARGET_COL = "Comptage horaire"
 
 MLFLOW_EXPERIMENT_NAME = "paris-bike-traffic"
-
-MODELS_DIR = Path("models")
 
 
 def load_data():
@@ -246,11 +242,6 @@ def train(model_name: str = "lgbm"):
             print(f"Nouveau modèle promu en production (R²: {r2} > {best_r2})")
         else:
             print(f"Modèle actuel conservé en production (R²: {best_r2} >= {r2})")
-            
-        MODELS_DIR.mkdir(exist_ok=True)
-        model_path = MODELS_DIR / f"model_{model_name}.joblib"
-        joblib.dump(pipeline, model_path)
-        print(f"Modèle sauvegardé dans le chemin : {model_path}")
 
         return metrics
 

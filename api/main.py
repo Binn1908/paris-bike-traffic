@@ -1,27 +1,28 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import Literal
-
 import sys
 from pathlib import Path
+from typing import Literal
 
-# Ajoute le dossier racine au path pour pouvoir importer les scripts
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+# Ajoute le dossier racine du projet au path pour pouvoir importer les scripts
 sys.path.append(str(Path(__file__).resolve().parent.parent))
+# .../velo-paris
 
 from scripts.predict import predict, AVAILABLE_MODELS, DEFAULT_MODEL
 from scripts.training import train
 
 app = FastAPI(
     title="Paris Bike Traffic API",
-    description="API de prédiction du trafic cycliste à Paris",
+    description="API pour le trafic cycliste à Paris : entraînement et prédiction des modèles.",
     version="1.0.0",
 )
 
 
-# --- Schémas de données ---
-
+# Schémas de données avec Pydantic
 
 class TrainingResponse(BaseModel):
+    # BaseModel est une classe de Pydantic qui sert à valider la typologie des attributs transmis via les endpoints
     model: str
     mae: float
     rmse: float
@@ -45,6 +46,8 @@ class PredictRequest(BaseModel):
     temperature: float
     precipitations: float
     model: Literal["lr", "rf", "lgbm", "xgb"] = DEFAULT_MODEL
+    # Literal est de type str mais accepte uniquement les valeurs fournies dans la liste
+    # Si model n'est pas donné par l'utilisateur, la prédiction se fera avec le modèle lgbm
 
 
 class PredictResponse(BaseModel):
@@ -52,28 +55,33 @@ class PredictResponse(BaseModel):
     prediction: float
 
 
-# --- Endpoints ---
-
+# Définition des endpoints
 
 @app.get("/")
 def root():
-    return {"message": "Paris Bike Traffic API — utilisez /training ou /predict"}
+    return {"message": "Paris Bike Traffic API — Endpoint disponibles : /training, /predict"}
 
 
 @app.post("/training", response_model=TrainingResponse)
 def training_endpoint(model: Literal["lr", "rf", "lgbm", "xgb"] = DEFAULT_MODEL):
-    """Réentraîne un modèle sur les données de la base de données et retourne les métriques."""
+    # La validation du paramètre model se passe directement dans la fonction
+    # Cela évite de devoir passer le modèle comme une requête JSON
+    """
+    Réentraîne un modèle sur les données de la base de données et retourne le modèle utilisé et les métriques.
+    """
     try:
         metrics = train(model_name=model)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    return TrainingResponse(**metrics)
+    return metrics
 
 
 @app.post("/predict", response_model=PredictResponse)
 def predict_endpoint(request: PredictRequest):
-    """Prédit le nombre de vélos par heure pour un compteur donné."""
+    """
+    Prédit le nombre de vélos par heure.
+    """
     input_data = {
         "Nom du compteur": request.nom_du_compteur,
         "Direction": request.direction,
@@ -98,3 +106,5 @@ def predict_endpoint(request: PredictRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     return PredictResponse(model=request.model, prediction=prediction)
+    # L'endpoint predict retourne la prédiction, mais aussi le modèle retenu
+    # C'est utile dans le cas où l'utilisateur n'aurait pas choisi un modèle
