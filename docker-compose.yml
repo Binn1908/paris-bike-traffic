@@ -18,23 +18,6 @@ services:
       retries: 10
 
   # container 2
-  init-db:
-    build: .  # Reprend l'image définie dans Dockerfile
-    environment:
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
-      MYSQL_DB: ${MYSQL_DB}
-    depends_on:
-      mysql:
-        condition: service_healthy
-    volumes:
-      - ./data/processed:/app/data/processed  # <-- bind mount
-    command: ["python", "db/init_db.py"]  # Remplace la ligne CMD dans le Dockerfile afin de lancer init_db.py
-    profiles: ["tools"]  # init-db ne sera pas lancé avec docker compose up, mais reste exécutable via docker compose run init-db
-
-  # container 3
   mlflow:
     build: .
     restart: unless-stopped
@@ -55,7 +38,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # container 4
+  # container 3
   api:
     build: .
     restart: unless-stopped
@@ -68,6 +51,10 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow:5000  # requis pour /training et /predict (modèles chargés depuis MLflow)
     ports:
       - "8000:8000"
+    volumes:
+      - ./data/raw:/app/data/raw
+      - ./data/processed:/app/data/processed
+      - mlflow_data:/mlflow-data
     depends_on:
       mysql:
         condition: service_healthy
@@ -79,7 +66,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # container 5
+  # container 4
   airflow-db:
     image: postgres:16
     restart: unless-stopped
@@ -95,7 +82,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # container 6
+  # container 5
   airflow:
     image: apache/airflow:2.10.4
     restart: unless-stopped
