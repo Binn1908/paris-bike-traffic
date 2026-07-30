@@ -18,7 +18,7 @@ DATABASE_URL = (
 CSV_PATH = Path("data/processed/df_processed.csv")
 
 
-def init_db():
+def load_db():
     """
     Lecture des données d'entraînement et écriture dans la base de données MySQL
     """
@@ -37,7 +37,9 @@ def init_db():
     with engine.connect() as conn:
         count = conn.execute(text("SELECT COUNT(*) FROM training_data")).scalar()
     print(f"Terminé ! {count} lignes écrites.")
+    
+    return count
 
 
 if __name__ == "__main__":
-    init_db()
+    load_db()

@@ -4,7 +4,7 @@ import pandas as pd
 
 # Emplacement des fichiers sources et du fichier de sortie, relatifs à la racine du projet
 RAW_DATA_PATH = Path("data/raw/comptage-velo-donnees-compteurs.csv")
-VACANCES_PATH = Path("data/raw/vacances-scolaires-2023-2026.csv")
+VACANCES_PATH = Path("data/raw/vacances-scolaires-2023-2027.csv")
 WEATHER_PATH = Path("data/raw/open-meteo-48.82N2.29E43m.csv")
 PROCESSED_DATA_PATH = Path("data/processed/df_processed.csv")
 
@@ -207,7 +207,7 @@ def overwrite_data(df):
     return df
 
 
-def preprocess_raw_data(
+def preprocess(
     raw_data_path=RAW_DATA_PATH,
     vacances_path=VACANCES_PATH,
     weather_path=WEATHER_PATH,
@@ -247,4 +247,4 @@ def preprocess_raw_data(
 
 
 if __name__ == "__main__":
-    preprocess_raw_data()
+    preprocess()
