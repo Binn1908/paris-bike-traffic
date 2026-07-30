@@ -9,12 +9,14 @@ from pydantic import BaseModel
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # .../velo-paris
 
+from scripts.load_db import load_db
 from scripts.predict import predict, AVAILABLE_MODELS, DEFAULT_MODEL
+from scripts.preprocess import preprocess
 from scripts.training import train
 
 app = FastAPI(
     title="Paris Bike Traffic API",
-    description="API pour le trafic cycliste à Paris : entraînement et prédiction des modèles.",
+    description="API pour le trafic cycliste à Paris : prétraitement des données, entraînement et prédiction des modèles.",
     version="1.0.0",
 )
 
@@ -55,11 +57,30 @@ class PredictResponse(BaseModel):
     prediction: float
 
 
+class LoadDbResponse(BaseModel):
+    rows_loaded: int
+
+
 # Définition des endpoints
 
 @app.get("/")
 def root():
-    return {"message": "Paris Bike Traffic API — Endpoint disponibles : /training, /predict"}
+    return {"message": "Paris Bike Traffic API — Endpoint disponibles : /load-db, /training, /predict"}
+
+
+@app.post("/load-db", response_model=LoadDbResponse)
+def load_db_endpoint():
+    """
+    Prétraite les données brutes et recharge la table training_data dans MySQL.
+    Toujours exécuté intégralement (pas de mode incrémental).
+    """
+    try:
+        preprocess()
+        rows_loaded = load_db()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return LoadDbResponse(rows_loaded=rows_loaded)
 
 
 @app.post("/training", response_model=TrainingResponse)
