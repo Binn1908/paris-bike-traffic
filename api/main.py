@@ -1,8 +1,11 @@
+import os
 import sys
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
 # Ajoute le dossier racine du projet au path pour pouvoir importer les scripts
@@ -10,10 +13,29 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 # .../velo-paris
 
 from scripts.load_db import load_db
-from scripts.predict import predict, AVAILABLE_MODELS, DEFAULT_MODEL
+from scripts.predict import predict, DEFAULT_MODEL
 from scripts.preprocess import preprocess
 from scripts.training import train
 
+# Nécessite un fichier .env à la racine (API_KEY, en plus des variables MySQL)
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise RuntimeError("La variable d'environnement API_KEY est manquante ou vide (voir .env).")
+
+api_key_header = APIKeyHeader(name="X-API-KEY")
+
+
+def verify_api_key(api_key: str = Depends(api_key_header)):
+    """
+    Vérifie que la clé API transmise dans le header X-API-Key correspond à celle
+    définie dans .env. Utilisé pour protéger les endpoints internes (Airflow uniquement).
+    """
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="Clé API invalide.")
+    
+    
 app = FastAPI(
     title="Paris Bike Traffic API",
     description="API pour le trafic cycliste à Paris : prétraitement des données, entraînement et prédiction des modèles.",
@@ -68,7 +90,7 @@ def root():
     return {"message": "Paris Bike Traffic API — Endpoint disponibles : /load-db, /training, /predict"}
 
 
-@app.post("/load-db", response_model=LoadDbResponse)
+@app.post("/load-db", response_model=LoadDbResponse, dependencies=[Depends(verify_api_key)])
 def load_db_endpoint():
     """
     Prétraite les données brutes et recharge la table training_data dans MySQL.
@@ -83,7 +105,7 @@ def load_db_endpoint():
     return LoadDbResponse(rows_loaded=rows_loaded)
 
 
-@app.post("/training", response_model=TrainingResponse)
+@app.post("/training", response_model=TrainingResponse, dependencies=[Depends(verify_api_key)])
 def training_endpoint(model: Literal["lr", "rf", "lgbm", "xgb"] = DEFAULT_MODEL):
     # La validation du paramètre model se passe directement dans la fonction
     # Cela évite de devoir passer le modèle comme une requête JSON
