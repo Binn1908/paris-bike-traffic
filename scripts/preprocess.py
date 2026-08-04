@@ -51,6 +51,10 @@ def load_data(raw_data_path=RAW_DATA_PATH, vacances_path=VACANCES_PATH, weather_
     
     df_weather.drop("time", axis=1, inplace=True)
     
+    # Le passage à l'heure d'hiver crée un timestamp local dupliqué chaque année
+    # (02h00 le dernier dimanche d'octobre) ; on ne garde que la première occurrence
+    df_weather = df_weather.drop_duplicates(subset="Date et heure de comptage", keep="first")
+    
     df_weather = df_weather.rename(columns={
         "temperature_2m (°C)": "Température (°C)",
         "precipitation (mm)": "Précipitations (mm)",
@@ -216,29 +220,37 @@ def preprocess(
     """
     Chaîne toutes les étapes de prétraitement et écrit df_processed.csv.
     """
-    print("Chargement des fichiers sources...")
+    print("Démarrage du prétraitement. Chargement du fichier source...")
     df, df_vacances_scolaires, df_weather = load_data(raw_data_path, vacances_path, weather_path)
     print(f"{len(df)} lignes chargées.")
 
     print("Suppression des valeurs aberrantes et des doublons...")
     df = remove_outliers(df)
+    #print(f"Après remove_outliers : {len(df)} lignes.")
     df = deduplicate(df)
+    #print(f"Après deduplicate : {len(df)} lignes.")
 
     print("Enrichissement géographique...")
     df = add_direction(df)
+    #print(f"Après add_direction : {len(df)} lignes.")
     df = add_coordinates(df)
+    #print(f"Après add_coordinates : {len(df)} lignes.")
 
     print("Fusion avec les données météorologiques...")
     df = add_weather_features(df, df_weather)
+    #print(f"Après add_weather_features : {len(df)} lignes.")
 
     print("Gestion des valeurs manquantes...")
     df = fill_nan(df)
+    #print(f"Après fill_nan : {len(df)} lignes.")
 
     print("Ajout des variables calendaires et des lags...")
     df = add_calendar_features(df, df_vacances_scolaires)
+    #print(f"Après add_calendar_features : {len(df)} lignes.")
 
     print("Harmonisation des sites spécifiques...")
     df = overwrite_data(df)
+    #print(f"Après overwrite_data : {len(df)} lignes.")
 
     print(f"Écriture du dataset prétraité dans {processed_data_path}...")
     processed_data_path.parent.mkdir(parents=True, exist_ok=True)

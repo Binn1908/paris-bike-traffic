@@ -1,0 +1,9 @@
+FROM apache/airflow:2.10.4
+
+# Installe les dépendances nécessaires à check_drift (connexion MySQL, Evidently, MLflow)
+# Utilise les contraintes officielles d'Airflow pour éviter les conflits de versions
+COPY requirements-airflow.txt /requirements-airflow.txt
+
+RUN pip install --no-cache-dir \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.4/constraints-3.12.txt" \
+    -r /requirements-airflow.txt

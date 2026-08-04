@@ -12,6 +12,7 @@ from pydantic import BaseModel
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # .../velo-paris
 
+from scripts.ingest import ingest
 from scripts.load_db import load_db
 from scripts.predict import predict, DEFAULT_MODEL
 from scripts.preprocess import preprocess
@@ -24,7 +25,7 @@ API_KEY = os.getenv("API_KEY")
 if not API_KEY:
     raise RuntimeError("La variable d'environnement API_KEY est manquante ou vide (voir .env).")
 
-api_key_header = APIKeyHeader(name="X-API-KEY")
+api_key_header = APIKeyHeader(name="X-API-Key")
 
 
 def verify_api_key(api_key: str = Depends(api_key_header)):
@@ -81,6 +82,7 @@ class PredictResponse(BaseModel):
 
 class LoadDbResponse(BaseModel):
     rows_loaded: int
+    batch: int | None = None
 
 
 # Définition des endpoints
@@ -93,16 +95,23 @@ def root():
 @app.post("/load-db", response_model=LoadDbResponse, dependencies=[Depends(verify_api_key)])
 def load_db_endpoint():
     """
-    Prétraite les données brutes et recharge la table training_data dans MySQL.
-    Toujours exécuté intégralement (pas de mode incrémental).
+    Récupère le dernier chunk de données brutes, le prétraite, et met à jour
+    la table training_data dans MySQL. Les lignes déjà présentes ne sont pas
+    réinsérées ; seules les nouvelles lignes sont ajoutées et taguées avec
+    un numéro de batch d'ingestion.
     """
     try:
+        ingest()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    try:
         preprocess()
-        rows_loaded = load_db()
+        rows_loaded, batch = load_db()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    return LoadDbResponse(rows_loaded=rows_loaded)
+    return LoadDbResponse(rows_loaded=rows_loaded, batch=batch)
 
 
 @app.post("/training", response_model=TrainingResponse, dependencies=[Depends(verify_api_key)])

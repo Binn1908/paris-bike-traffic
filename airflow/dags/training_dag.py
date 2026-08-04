@@ -1,7 +1,12 @@
+import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.providers.http.operators.http import SimpleHttpOperator
+
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise RuntimeError("La variable d'environnement API_KEY est manquante ou vide (voir .env).")
 
 default_args = {
     "owner": "Chinnawat Wisetwongsa",
@@ -19,6 +24,7 @@ def create_train_task(model_name: str) -> SimpleHttpOperator:
         http_conn_id="api_connection",  # C'est la connection avec FastAPI (docker)
         endpoint=f"/training?model={model_name}",  # Requête URL, pas JSON
         method="POST",
+        headers={"X-API-Key": API_KEY},
         log_response=True,
     )
 
@@ -27,11 +33,10 @@ with DAG(
     dag_id="paris_bike_traffic_training",
     description="Entraîne les 4 modèles séquentiellement sur les données MySQL",
     default_args=default_args,
-    schedule_interval="@daily",
+    schedule_interval=None,  # Pas de planification : ce DAG est déclénché uniquement par ingestion_dag.py lorsqu'une dérive est détectée
     start_date=datetime(2026, 7, 1),
     catchup=False,
     max_active_runs=1,  # Empêche plusieurs exécutions simultanées du même DAG
-                        # (ex: un run planifié @daily qui chevauche un déclenchement manuel)
     tags=["paris-bike-traffic"],
 ) as dag:
 

@@ -6,6 +6,7 @@ import mlflow.sklearn
 import pandas as pd
 from dotenv import load_dotenv
 from lightgbm import LGBMRegressor
+from scripts.features import FEATURE_COLS_NUM, FEATURE_COLS_CAT, TARGET_COL
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
@@ -56,24 +57,6 @@ MODELS = {
     ),
 }
 
-FEATURE_COLS_NUM = [
-    "Année",
-    "Mois",
-    "Jour du mois",
-    "Heure",
-    "Jour de la semaine",
-    "Week-end",
-    "Vacances",
-    "lag_1h",
-    "lag_24h",
-    "lag_168h",
-    "roll_mean_3h",
-    "Température (°C)",
-    "Précipitations (mm)",
-]
-FEATURE_COLS_CAT = ["Nom du compteur", "Direction"]
-TARGET_COL = "Comptage horaire"
-
 MLFLOW_EXPERIMENT_NAME = "paris-bike-traffic"
 
 
@@ -106,10 +89,19 @@ def prep_data(df):
     ).copy()
     
     df_clean = df_clean.sort_values("Date et heure de comptage")
+    
+    df_clean_size = len(df_clean)
 
-    split = int(len(df_clean) * 0.8)
-    train = df_clean.iloc[:split]
-    test = df_clean.iloc[split:]
+    # Détermine la date de coupure la plus proche de 80 % des lignes,
+    # en s'assurant qu'aucun horodatage ne soit scindé entre train et test
+    # (toutes les lignes d'un même horodatage restent groupées ensemble)
+    rows_per_date = df_clean.groupby("Date et heure de comptage").size()
+    cumulative_rows = rows_per_date.cumsum()
+    target_row_count = int(len(df_clean) * 0.8)
+    split_date = cumulative_rows[cumulative_rows <= target_row_count].index.max()
+
+    train = df_clean[df_clean["Date et heure de comptage"] <= split_date]
+    test = df_clean[df_clean["Date et heure de comptage"] > split_date]
 
     X_train = train[FEATURE_COLS_NUM + FEATURE_COLS_CAT]
     y_train = train[TARGET_COL]
@@ -123,7 +115,7 @@ def prep_data(df):
         "test_end_date": str(test["Date et heure de comptage"].max()),
     }
 
-    return X_train, y_train, X_test, y_test, date_ranges
+    return X_train, y_train, X_test, y_test, date_ranges, df_clean_size
 
 
 def build_pipeline(model_name, model):
@@ -177,7 +169,7 @@ def train(model_name: str = "lgbm"):
     print(f"{len(df)} lignes chargées.")
 
     print("Preprocessing des données en cours...")
-    X_train, y_train, X_test, y_test, date_ranges = prep_data(df)
+    X_train, y_train, X_test, y_test, date_ranges, df_clean_size = prep_data(df)
 
     # Création de l'expérience MLflow
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
@@ -186,9 +178,10 @@ def train(model_name: str = "lgbm"):
         
         print("Logging des métadonnées des données...")
         mlflow.log_param("model_name", model_name)
+        mlflow.log_param("dataset_total_size", len(df))
+        mlflow.log_param("clean_dataset_size", df_clean_size)  # après dropna
         mlflow.log_param("train_size", len(X_train))
         mlflow.log_param("test_size", len(X_test))
-        mlflow.log_param("data_rows_total", len(df))
         mlflow.log_params(date_ranges)
         mlflow.log_param("n_features", len(FEATURE_COLS_NUM) + len(FEATURE_COLS_CAT))
         

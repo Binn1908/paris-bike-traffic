@@ -49,6 +49,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_DB: ${MYSQL_DB}
       MLFLOW_TRACKING_URI: http://mlflow:5000  # requis pour /training et /predict (modèles chargés depuis MLflow)
+      API_KEY: ${API_KEY}
     ports:
       - "8000:8000"
     volumes:
@@ -84,15 +85,28 @@ services:
 
   # container 5
   airflow:
-    image: apache/airflow:2.10.4
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     restart: unless-stopped
+    user: "0:0"
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW_CONN_API_CONNECTION: 'http://api:8000'
+      API_KEY: ${API_KEY}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DB: ${MYSQL_DB}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PYTHONPATH: /opt/airflow
     volumes:
       - ./airflow/dags:/opt/airflow/dags
+      - ./scripts:/opt/airflow/scripts
+      - mlflow_data:/mlflow-data
       - airflow_data:/opt/airflow
     ports:
       - "8081:8080"
@@ -100,6 +114,10 @@ services:
       airflow-db:
         condition: service_healthy
       api:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mlflow:
         condition: service_healthy
     command: standalone
     # Mode "tout-en-un" (webserver + scheduler + triggerer) — pratique pour un seul conteneur,

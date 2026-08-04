@@ -1,0 +1,6 @@
+pandas
+sqlalchemy
+pymysql
+evidently==0.4.33
+mlflow
+python-dotenv
