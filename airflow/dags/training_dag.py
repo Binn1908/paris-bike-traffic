@@ -10,7 +10,7 @@ if not API_KEY:
 
 default_args = {
     "owner": "Chinnawat Wisetwongsa",
-    "retries": 2,
+    "retries": 0,
     "retry_delay": timedelta(minutes=5),
 }
 

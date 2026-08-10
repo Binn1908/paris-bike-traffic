@@ -13,7 +13,7 @@ __pycache__/
 # Large / private files
 data/processed/df_processed.csv
 data/processed/df_random_forest_tuning.csv
-data/raw/comptage-velo-donnees-compteurs.csv
+data/raw/*.csv
 reports/Description-colonnes.xlsx
 reports/Rapport final.ipynb
 reports/Rapport final.pdf

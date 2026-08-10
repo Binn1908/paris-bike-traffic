@@ -1,5 +1,17 @@
+import os
+from datetime import datetime
+
 import mlflow
 import pandas as pd
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+
+load_dotenv()
+
+DATABASE_URL = (
+    f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}"
+    f"@{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DB')}"
+)
 
 AVAILABLE_MODELS = ["lr", "rf", "lgbm", "xgb"]
 DEFAULT_MODEL = "lgbm"
@@ -22,6 +34,24 @@ def load_model(model_name: str = DEFAULT_MODEL):
         raise FileNotFoundError(
             f"Aucun modèle '{model_name}' en production dans le MLflow Registry : {e}"
         )
+
+
+def log_prediction(input_data: dict, prediction: float, model_name: str):
+    """
+    Enregistre une prédiction (features en entrée, le modèle utilisé et la valeur prédite) dans la
+    table MySQL predictions, pour permettre une future détection de dérive
+    côté prédiction (comparaison avec training_data).
+    """
+    row = {
+        **input_data,
+        "prediction": prediction,
+        "model": model_name,
+        "request_time": datetime.now(),
+    }
+    df = pd.DataFrame([row])
+
+    engine = create_engine(DATABASE_URL)
+    df.to_sql("predictions", engine, if_exists="append", index=False)
 
 
 def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
@@ -56,6 +86,10 @@ def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
     prediction = max(0.0, round(float(prediction), 2))
     # La prédiction ne peut être < 0
     print(f"Nombre de vélos prédit par heure : {prediction}")
+    
+    log_prediction(input_data, prediction, model_name)
+    
+    print("Prédiction enregistrée dans la table MySQL predictions.")
     
     return prediction
 
