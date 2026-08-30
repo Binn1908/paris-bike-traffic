@@ -14,6 +14,7 @@ from evidently.report import Report
 from evidently.metric_preset import DataDriftPreset
 from scripts.features import FEATURE_COLS_NUM, FEATURE_COLS_CAT
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 load_dotenv()
 
@@ -65,11 +66,17 @@ def check_prediction_drift(**context):
     envoyées à /predict.
 
     Retourne :
-    - "no_new_predictions" : aucune prédiction non vérifiée
+    - "no_predictions_yet" : la table predictions n'existe pas
+    - "insufficient_predictions" : prédiction reportée
     - "drift" / "no_drift" : résultat de la comparaison Evidently
     """
     engine = create_engine(DATABASE_URL)
-    check_batch_column(engine)
+    
+    try:
+        check_batch_column(engine)
+    except (OperationalError, ProgrammingError):
+        print("Table predictions introuvable : vérification de dérive ignorée.")
+        return "no_predictions_yet"
 
     cols_sql = ", ".join(f"`{c}`" for c in FEATURE_COLS)
 
@@ -78,9 +85,22 @@ def check_prediction_drift(**context):
         engine,
     )
 
-    if len(df_current) == 0:
-        print("Aucune nouvelle prédiction à vérifier.")
-        return "no_new_predictions"
+    if len(df_current) < 50:
+        print(f"Seulement {len(df_current)} nouvelle(s) prédiction(s) à vérifier (seuil : 50). Vérification reportée.")
+        return "insufficient_predictions"
+    
+    try:
+        with engine.connect() as conn:
+            training_data_count = conn.execute(
+                text("SELECT COUNT(*) FROM training_data")
+            ).scalar()
+    except (OperationalError, ProgrammingError):
+        print("Table training_data introuvable : vérification de dérive ignorée.")
+        return "no_reference_data"
+
+    if training_data_count == 0:
+        print("Table training_data vide : vérification de dérive ignorée.")
+        return "no_reference_data"
 
     with engine.connect() as conn:
         max_batch = conn.execute(
@@ -149,7 +169,7 @@ with DAG(
     dag_id="paris_bike_traffic_prediction_drift",
     description="Vérifie la dérive des features envoyées à /predict par rapport aux données d'entraînement",
     default_args=default_args,
-    schedule_interval=None,  # À définir
+    schedule_interval="@daily",
     start_date=datetime(2026, 8, 4),
     catchup=False,
     max_active_runs=1,

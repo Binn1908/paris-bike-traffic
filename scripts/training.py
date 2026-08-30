@@ -152,6 +152,31 @@ def get_best_production_r2(model_name: str) -> float | None:
     except Exception:
         # Aucun modèle en production trouvé
         return None
+    
+
+def get_best_model_name() -> str:
+    """
+    Détermine quel modèle a le meilleur R² actuellement en production,
+    tous modèles confondus. Utilisé par /predict comme modèle par défaut
+    lorsque l'utilisateur n'en choisit pas.
+    """
+    best_model = None
+    best_r2 = None
+
+    for model_name in MODELS:
+        r2 = get_best_production_r2(model_name)
+        if r2 is None:
+            continue
+        if best_r2 is None or r2 > best_r2:
+            best_model = model_name
+            best_r2 = r2
+
+    if best_model is None:
+        raise FileNotFoundError(
+            "Aucun modèle en production trouvé dans le MLflow Registry."
+        )
+
+    return best_model
 
 
 def train(model_name: str = "lgbm"):

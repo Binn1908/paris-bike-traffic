@@ -1,12 +1,15 @@
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import APIKeyHeader
+from prometheus_client import Counter, Histogram, generate_latest, CollectorRegistry
 from pydantic import BaseModel
+from sqlalchemy import create_engine, text
 
 # Ajoute le dossier racine du projet au path pour pouvoir importer les scripts
 sys.path.append(str(Path(__file__).resolve().parent.parent))
@@ -16,10 +19,17 @@ from scripts.ingest import ingest
 from scripts.load_db import load_db
 from scripts.predict import predict, DEFAULT_MODEL
 from scripts.preprocess import preprocess
-from scripts.training import train
+from scripts.training import train, get_best_model_name
 
 # Nécessite un fichier .env à la racine (API_KEY, en plus des variables MySQL)
 load_dotenv()
+
+# Connexion à la base de données MySQL (utilisée par /get-counters)
+DATABASE_URL = (
+    f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}"
+    f"@{os.getenv('MYSQL_HOST')}:{os.getenv('MYSQL_PORT')}/{os.getenv('MYSQL_DB')}"
+)
+engine = create_engine(DATABASE_URL)
 
 API_KEY = os.getenv("API_KEY")
 if not API_KEY:
@@ -41,6 +51,22 @@ app = FastAPI(
     title="Paris Bike Traffic API",
     description="API pour le trafic cycliste à Paris : prétraitement des données, entraînement et prédiction des modèles.",
     version="1.0.0",
+)
+
+registry = CollectorRegistry()
+
+api_requests_total = Counter(
+    'api_requests_total',
+    'Total number of API requests',
+    ['endpoint', 'method', 'status_code', 'model'],
+    registry=registry
+)
+
+api_request_duration_seconds = Histogram(
+    'api_request_duration_seconds',
+    'API request duration in seconds',
+    ['endpoint', 'method', 'status_code', 'model'],
+    registry=registry
 )
 
 
@@ -70,9 +96,9 @@ class PredictRequest(BaseModel):
     roll_mean_3h: float
     temperature: float
     precipitations: float
-    model: Literal["lr", "rf", "lgbm", "xgb"] = DEFAULT_MODEL
-    # Literal est de type str mais accepte uniquement les valeurs fournies dans la liste
-    # Si model n'est pas donné par l'utilisateur, la prédiction se fera avec le modèle lgbm
+    model: Literal["lr", "rf", "lgbm", "xgb"] | None = None
+    # Si model n'est pas donné par l'utilisateur, /predict choisit
+    # automatiquement le modèle ayant le meilleur R² actuellement en production
 
 
 class PredictResponse(BaseModel):
@@ -134,6 +160,11 @@ def predict_endpoint(request: PredictRequest):
     """
     Prédit le nombre de vélos par heure.
     """
+    start_time = time.time()
+    status_code = "200"
+
+    model_name = request.model or get_best_model_name()
+
     input_data = {
         "Nom du compteur": request.nom_du_compteur,
         "Direction": request.direction,
@@ -153,10 +184,53 @@ def predict_endpoint(request: PredictRequest):
     }
 
     try:
-        prediction = predict(input_data, model_name=request.model)
+        prediction = predict(input_data, model_name=model_name)
+        return PredictResponse(model=model_name, prediction=prediction)
+        # L'endpoint predict retourne la prédiction, mais aussi le modèle retenu
+        # C'est utile dans le cas où l'utilisateur n'aurait pas choisi un modèle
     except (ValueError, FileNotFoundError) as e:
+        status_code = "400"
         raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        duration = time.time() - start_time
+        api_requests_total.labels(
+            endpoint="/predict", method="POST", status_code=status_code, model=model_name
+        ).inc()
+        api_request_duration_seconds.labels(
+            endpoint="/predict", method="POST", status_code=status_code, model=model_name
+        ).observe(duration)
+        
 
-    return PredictResponse(model=request.model, prediction=prediction)
-    # L'endpoint predict retourne la prédiction, mais aussi le modèle retenu
-    # C'est utile dans le cas où l'utilisateur n'aurait pas choisi un modèle
+@app.get("/metrics")
+def metrics():
+    """
+    Expose les métriques Prometheus pour /predict.
+    """
+    return Response(content=generate_latest(registry), media_type="text/plain")
+    
+
+@app.get("/get-counters")
+def get_counters():
+    """
+    Retourne la liste des noms de compteurs distincts présents dans training_data.
+    Utilisé par l'interface Streamlit pour peupler le menu déroulant.
+    """
+    query = text('SELECT DISTINCT `Nom du compteur` FROM training_data ORDER BY `Nom du compteur`')
+    with engine.connect() as conn:
+        result = conn.execute(query)
+        counters = [row[0] for row in result]
+    return {"counters": counters}
+
+
+@app.get("/best-model")
+def best_model_endpoint():
+    """
+    Retourne le nom du modèle ayant actuellement le meilleur R² en production.
+    Utilisé par l'interface Streamlit pour indiquer le modèle recommandé.
+    """
+    try:
+        model_name = get_best_model_name()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    return {"best_model": model_name}

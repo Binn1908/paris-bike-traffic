@@ -1,0 +1,46 @@
+apiVersion: 1
+contactPoints:
+    - orgId: 1
+      name: training-webhook-lgbm
+      receivers:
+        - uid: cfwmxza6847pcc
+          type: webhook
+          settings:
+            headers:
+                X-API-Key: $API_KEY
+            httpMethod: POST
+            url: http://api:8000/training?model=lgbm
+          disableResolveMessage: false
+    - orgId: 1
+      name: training-webhook-lr
+      receivers:
+        - uid: efwmx9g5hl7uof
+          type: webhook
+          settings:
+            headers:
+                X-API-Key: $API_KEY
+            httpMethod: POST
+            url: http://api:8000/training?model=lr
+          disableResolveMessage: false
+    - orgId: 1
+      name: training-webhook-rf
+      receivers:
+        - uid: afwmxq5hw3egwd
+          type: webhook
+          settings:
+            headers:
+                X-API-Key: $API_KEY
+            httpMethod: POST
+            url: http://api:8000/training?model=rf
+          disableResolveMessage: false
+    - orgId: 1
+      name: training-webhook-xgb
+      receivers:
+        - uid: dfwmy445pid4wd
+          type: webhook
+          settings:
+            headers:
+                X-API-Key: $API_KEY
+            httpMethod: POST
+            url: http://api:8000/training?model=xgb
+          disableResolveMessage: false

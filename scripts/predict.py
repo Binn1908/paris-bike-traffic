@@ -87,9 +87,11 @@ def predict(input_data: dict, model_name: str = DEFAULT_MODEL) -> float:
     # La prédiction ne peut être < 0
     print(f"Nombre de vélos prédit par heure : {prediction}")
     
-    log_prediction(input_data, prediction, model_name)
-    
-    print("Prédiction enregistrée dans la table MySQL predictions.")
+    try:
+        log_prediction(input_data, prediction, model_name)
+        print("Prédiction enregistrée dans la table MySQL predictions.")
+    except Exception as e:
+        print(f"Échec de l'enregistrement de la prédiction dans MySQL (non bloquant) : {e}")
     
     return prediction
 
