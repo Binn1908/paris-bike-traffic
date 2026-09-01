@@ -1,8 +1,9 @@
 import os
 from datetime import datetime, timedelta
 
-from airflow import DAG
 from airflow.providers.http.operators.http import SimpleHttpOperator
+
+from airflow import DAG
 
 API_KEY = os.getenv("API_KEY")
 if not API_KEY:

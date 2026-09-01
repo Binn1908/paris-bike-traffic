@@ -22,3 +22,4 @@ Cycling traffic in Paris.docx
 .env
 mlflow.db
 mlruns/
+data/demo/

@@ -7,7 +7,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import APIKeyHeader
-from prometheus_client import Counter, Histogram, generate_latest, CollectorRegistry
+from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
 
@@ -17,9 +17,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from scripts.ingest import ingest
 from scripts.load_db import load_db
-from scripts.predict import predict, DEFAULT_MODEL
+from scripts.predict import DEFAULT_MODEL, predict
 from scripts.preprocess import preprocess
-from scripts.training import train, get_best_model_name
+from scripts.training import get_best_model_name, train
 
 # Nécessite un fichier .env à la racine (API_KEY, en plus des variables MySQL)
 load_dotenv()

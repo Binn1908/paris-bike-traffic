@@ -4,17 +4,18 @@ from datetime import datetime, timedelta
 
 import mlflow
 import pandas as pd
-from airflow import DAG
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import BranchPythonOperator, PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.http.operators.http import SimpleHttpOperator
 from dotenv import load_dotenv
+from evidently.metric_preset import DataDriftPreset
 from evidently.pipeline.column_mapping import ColumnMapping
 from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
-from scripts.features import FEATURE_COLS_NUM, FEATURE_COLS_CAT, TARGET_COL
 from sqlalchemy import create_engine, text
+
+from airflow import DAG
+from scripts.features import FEATURE_COLS_CAT, FEATURE_COLS_NUM, TARGET_COL
 
 load_dotenv()
 

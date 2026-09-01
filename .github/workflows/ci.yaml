@@ -1,0 +1,61 @@
+name: CI
+
+# Se déclenche à chaque push et à chaque pull request, sur n'importe quelle branche.
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installation de Poetry
+        run: pipx install poetry==2.2.1
+
+      - name: Installation des dépendances du projet (depuis poetry.lock)
+        run: poetry install --no-root
+
+      - name: Installation des outils de lint/test
+        run: poetry run pip install pytest pytest-mock ruff
+
+      - name: Linter (ruff)
+        run: poetry run ruff check .
+
+      - name: Tests unitaires
+        run: poetry run pytest tests/ -v
+
+  build-docker-images:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Build image API (validation uniquement, pas de push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+
+      - name: Build image Airflow (validation uniquement, pas de push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.airflow
+          push: false
+
+      - name: Build image Streamlit (validation uniquement, pas de push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.streamlit
+          push: false

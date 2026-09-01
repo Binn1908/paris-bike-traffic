@@ -1,0 +1,70 @@
+name: Release
+
+# Se déclenche uniquement sur la branche par défaut (main).
+on:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installation de Poetry
+        run: pipx install poetry==2.2.1
+
+      - name: Installation des dépendances du projet (depuis poetry.lock)
+        run: poetry install --no-root
+
+      - name: Installation des outils de lint/test
+        run: poetry run pip install pytest pytest-mock ruff
+
+      - name: Linter (ruff)
+        run: poetry run ruff check .
+
+      - name: Tests unitaires
+        run: poetry run pytest tests/ -v
+
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Connexion à DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push image API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/paris-bike-traffic-api:latest
+
+      - name: Build & push image Airflow
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.airflow
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/paris-bike-traffic-airflow:latest
+
+      - name: Build & push image Streamlit
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.streamlit
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/paris-bike-traffic-streamlit:latest

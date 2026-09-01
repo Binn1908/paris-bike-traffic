@@ -6,7 +6,6 @@ import mlflow.sklearn
 import pandas as pd
 from dotenv import load_dotenv
 from lightgbm import LGBMRegressor
-from scripts.features import FEATURE_COLS_NUM, FEATURE_COLS_CAT, TARGET_COL
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
@@ -15,6 +14,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sqlalchemy import create_engine
 from xgboost import XGBRegressor
+
+from scripts.features import FEATURE_COLS_CAT, FEATURE_COLS_NUM, TARGET_COL
 
 load_dotenv()
 
@@ -189,7 +190,7 @@ def train(model_name: str = "lgbm"):
             f"Modèle '{model_name}' inconnu. Valeurs acceptées : {list(MODELS.keys())}"
         )
 
-    print(f"Chargement des données d'entraînement depuis la base de données MySQL...")
+    print("Chargement des données d'entraînement depuis la base de données MySQL...")
     df = load_data()
     print(f"{len(df)} lignes chargées.")
 
