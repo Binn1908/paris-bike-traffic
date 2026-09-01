@@ -30,7 +30,6 @@ dependencies = [
     "prometheus-fastapi-instrumentator"
 ]
 
-
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
@@ -40,3 +39,23 @@ dev = [
     "ipykernel (>=7.1.0,<8.0.0)",
     "jupyterlab (>=4.5.1,<5.0.0)"
 ]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 150
+target-version = "py312"
+# Notebooks d'exploration et dossiers de données/artefacts : hors périmètre du linter CI
+extend-exclude = ["notebooks", "data", "models", "reports"]
+
+[tool.ruff.lint]
+# E/F : erreurs pycodestyle + pyflakes (bugs réels : imports/variables inutilisés, etc.)
+# I : tri des imports
+# On exclut volontairement les règles plus strictes (sécurité, datetime, async...)
+# qui ne correspondent pas aux choix de conception assumés de ce projet.
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Blocs de texte de présentation Streamlit (contenu, pas de la logique) : lignes longues tolérées
+"streamlit/tabs/tab_presentation.py" = ["E501"]
