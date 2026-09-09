@@ -24,6 +24,8 @@ Ce projet déploie, dans le cadre d'un capstone en trois parties chez Liora, un 
 
 ## Architecture
 
+![Architecture du pipeline](assets/Architecture.png)
+
 Au cœur de l'architecture se trouve FastAPI qui expose trois endpoints principaux :
 
 - /load-db : extrait les données brutes (CSV le plus récent dans data/raw/), les transforme, et les charge dans la table MySQL training_data. Cette dernière grandit à chaque ingestion plutôt que d'être remplacée. La déduplication repose sur un seuil de date : les lignes ne sont ajoutées que si elles sont postérieures à la date maximale actuelle dans la table.
