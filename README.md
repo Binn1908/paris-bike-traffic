@@ -1,10 +1,15 @@
-Vélo Paris
+# Vélo Paris
 
 Ce projet déploie, dans le cadre d'un capstone en trois parties chez Liora, un système MLOps qui prédit pour une heure donnée le trafic cycliste sur une soixantaine de sites à Paris. Les données d'entraînement sont les comptages horaires du trafic passé, fournis par la Ville de Paris dans le cadre de son objectif de rendre la capitale 100% cyclable. Le système s'appuie sur plusieurs composants qui, ensemble, en font un pipeline automatisé et auto-réparant.
 
-Modèles : Régression Linéaire, Random Forest, LightGBM, XGBoost.
+## Modèles
 
-Stack technique
+- Régression Linéaire
+- Random Forest
+- LightGBM
+- XGBoost.
+
+## Stack technique
 
 - Gestion des dépendances : Poetry (Python 3.12.3)
 - Conteneurisation : Docker Compose
@@ -17,7 +22,7 @@ Stack technique
 - Supervision : Prometheus (prometheus_client) et Grafana
 - Frontend : Streamlit
 
-Architecture
+## Architecture
 
 Au cœur de l'architecture se trouve FastAPI qui expose trois endpoints principaux :
 
@@ -33,17 +38,17 @@ Il y a trois DAGs distincts : l'ingestion_dag, qui tourne quotidiennement, alime
 
 Tandis que le drift est suivi et géré au sein d'Airflow, la santé de l'API elle-même est surveillée par Prometheus, via les métriques collectées par l'endpoint /metrics de FastAPI et affichées sur un dashboard Grafana. Les indicateurs suivis incluent le volume des requêtes, la latence, et le taux d'erreur. Chacun des quatre modèles dispose de sa propre règle d'alerte, utilisant la différence entre max_over_time et min_over_time sur une fenêtre de trois minutes, avec un seuil de trois requêtes en échec. Si ce seuil est dépassé, l'entraînement est relancé directement via un webhook vers /training.
 
-Note sur la reproductibilité des entraînements
+## Note sur la reproductibilité des entraînements
 
 Le découpage entre les jeux d'entraînement et de test respecte des frontières horaires nettes, sans chevauchement entre les deux. Cela permet de reconstruire, à partir de MySQL, le même jeu de données utilisé lors d'un entraînement donné, en filtrant sur l'intervalle de comptages enregistré dans MLflow. Il faut toutefois réappliquer les mêmes conditions dropna() que celles utilisées au moment de l'entraînement, pour obtenir un jeu de données rigoureusement identique.
 
-Démarrage
+## Démarrage
 
-1. Prérequis
+### 1. Prérequis
 
 Docker et Docker Compose sont nécessaires. Python 3.12.3 (via pyenv, recommandé) est utile si vous exécutez des scripts hors des conteneurs. Poetry est utilisé pour la gestion des dépendances en local.
 
-2. Configuration de l'environnement
+### 2. Configuration de l'environnement
 
 Copier le fichier d'exemple et renseigner les vraies valeurs :
 
@@ -55,45 +60,45 @@ MYSQL_PASSWORD : l'image MySQL officielle l'utilise pour initialiser l'utilisate
 
 API_KEY protège les endpoints /load-db et /training (header X-API-Key) et est également utilisée par les contact points webhook de Grafana pour déclencher le réentraînement.
 
-3. Amorçage des données brutes
+### 3. Amorçage des données brutes
 
 Avant le premier appel à /load-db, le pipeline a besoin d'un CSV brut déjà présent. Télécharger le dernier export depuis Paris Data (opendata.paris.fr), jeu de données des compteurs vélo, puis l'enregistrer dans data/raw/ en respectant la convention de nommage comptage-velo-donnees-compteurs-DD.MM.YYYY.csv, où la date correspond à la date d'observation la plus récente de cet export.
 
 ingest.py scanne data/raw/ et sélectionne automatiquement le fichier le plus récent par date analysée. Relancer l'ingestion plus tard avec un nouvel export ne nécessite donc que de déposer le nouveau CSV dans ce dossier.
 
-4. Démarrer la stack
+### 4. Démarrer la stack
 
 docker compose up -d --build
 
 Le service airflow-init exécute airflow db migrate et crée l'utilisateur admin avant le démarrage du webserver et du scheduler Airflow. Tous les services disposent d'un healthcheck, donc docker compose up attend correctement les dépendances.
 
-5. Désactiver la pause des DAGs Airflow
+### 5. Désactiver la pause des DAGs Airflow
 
 Les trois DAGs démarrent en pause par conception, afin que toute personne clonant le dépôt inspecte le pipeline avant qu'il ne commence à tourner dans son environnement, plutôt qu'il ne se déclenche automatiquement au docker compose up.
 
-docker compose exec airflow airflow dags unpause training_dag
-docker compose exec airflow airflow dags unpause ingestion_dag
-docker compose exec airflow airflow dags unpause prediction_drift_dag
+- docker compose exec airflow airflow dags unpause training_dag
+- docker compose exec airflow airflow dags unpause ingestion_dag
+- docker compose exec airflow airflow dags unpause prediction_drift_dag
 
 Attention : si training_dag reste en pause, les appels TriggerDagRunOperator provenant de ingestion_dag ou de prediction_drift_dag se mettront en file d'attente silencieusement et ne s'exécuteront jamais, sans qu'aucune erreur ne soit levée. Il faut toujours désactiver la pause des trois DAGs.
 
-6. Accéder aux services
+### 6. Accéder aux services
 
-Interface Airflow : http://localhost:8081
-Documentation FastAPI : http://localhost:8000/docs
-Interface MLflow : http://localhost:5001
-Prometheus : http://localhost:9090
-Grafana : http://localhost:3000
-Interface Streamlit : http://localhost:8501
+- Interface Airflow : http://localhost:8081
+- Documentation FastAPI : http://localhost:8000/docs
+- Interface MLflow : http://localhost:5001
+- Prometheus : http://localhost:9090
+- Grafana : http://localhost:3000
+- Interface Streamlit : http://localhost:8501
 
 Ajuster les ports ci-dessus si votre docker-compose.yml les mappe différemment.
 
 Voir API_COMMANDS.md pour la liste complète des endpoints de l'API avec des exemples de requêtes.
 
-Limites connues et améliorations
+## Limites connues et améliorations
 
 Deux améliorations sont prévues pour l'ensemble de référence du drift. La première consisterait à fixer la référence sur le train_end_date propre à chaque modèle en production, tel que loggé dans MLflow, plutôt que sur un pool qui grandit indéfiniment. La seconde consisterait à utiliser une fenêtre glissante pour que la taille de l'échantillon, et donc la sensibilité statistique, reste stable dans le temps. Quand la référence grandit sans limite, les tests KS et chi-carré deviennent plus sensibles au bruit, pas moins, car le même écart proportionnel est bien plus significatif sur un million d'échantillons que sur dix. Cela peut à terme produire de faux positifs de drift plutôt que manquer un vrai drift.
 
-Auteur
+## Auteur
 
-Chinnawat Wisetwongsa. Capstone Liora, Projet 3. Superviseur : Nicolas.
+Chinnawat Wisetwongsa. Capstone Liora, Projet 3. Superviseur : Nicolas Fradin.
