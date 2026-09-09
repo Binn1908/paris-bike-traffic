@@ -24,3 +24,11 @@ mlflow.db
 mlruns/
 data/demo/
 README (Projet 2).md
+.streamlit/
+data/processed/
+models/
+notebooks/
+reports/
+streamlit/tabs/
+streamlit/logo.png
+requirements.txt
