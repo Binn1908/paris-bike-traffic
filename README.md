@@ -93,7 +93,7 @@ Attention : si training_dag reste en pause, les appels TriggerDagRunOperator pro
 
 Ajuster les ports ci-dessus si votre docker-compose.yml les mappe différemment.
 
-Voir API_COMMANDS.md pour la liste complète des endpoints de l'API avec des exemples de requêtes.
+Voir API_COMMANDS.pdf pour la liste complète des endpoints de l'API avec des exemples de requêtes.
 
 ## Limites connues et améliorations
 
